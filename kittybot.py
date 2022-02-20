@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -41,21 +42,47 @@ bot = Bot(token=TELEGRAM_TOKEN)
 URL = 'https://api.thecatapi.com/v1/images/search'
 NEW_URL = 'https://api.thedogapi.com/v1/images/search'
 
+ANSWERS = {
+    'привет': 'Привет, я KittyBot!',
+    'Привет': 'Привет, я KittyBot!',
+    'hello': 'Hello, I am KittyBot!',
+    'Hello': 'Hello, I am KittyBot!',
+    'Как дела?': 'Всё замечательно! Надеюсь, и ты в полном порядке!',
+    'как дела?': 'Всё замечательно! Надеюсь, и ты в полном порядке!',
+    "What's up?": 'I am great! Hopefully, you are great too!',
+    "what's up?": 'I am great! Hopefully, you are great too!',
+    'что ты умеешь?': ('Я могу поднять тебе настроение! Я могу показать '
+                       'тебе кучу картинок с милыми животными.'),
+    'Что ты умеешь?': ('Я могу поднять тебе настроение! Я могу показать '
+                       'тебе кучу картинок с милыми животными.'),
+    'what can you do?': ('I can show you pictures of cuties which probably '
+                         'will make you merrier!'),
+    'What can you do?': ('I can show you pictures of cuties which probably '
+                         'will make you merrier!'),
+}
+
 
 def say_hi(update, context):
     """
     Bot answers to any text messages.
     """
-    answer = 'Привет, я KittyBot!'
+    message_from_user = update.effective_message.text
     chat = update.effective_chat
-    try:
+    keys = ANSWERS.keys()
+    if message_from_user in keys:
+        answer = ANSWERS[message_from_user]
         context.bot.send_message(chat_id=chat.id, text=answer)
-        logger.info('Message succesfully sent.')
-    except exceptions.MessageError as error:
-        logger.error(f'Message was not send to the user: {error}')
-        raise exceptions.MessageError(
-            f'Message was not send to the user: {error}'
-        )
+        logger.info('Message was successfully sent.')
+    elif message_from_user not in keys:
+        answer = ('My name is KittyBot and I can show you pictures of cuties! '
+                  'Would you like to see some? If you do, press the '
+                  'button below.')
+        context.bot.send_message(chat_id=chat.id, text=answer)
+        logger.info('Message was successfully sent.')
+    else:
+        logger.error('Sending message is failed.')
+        raise exceptions.MessageError('Sending message is failed.')
+    return answer
 
 
 def get_new_image():
@@ -66,7 +93,7 @@ def get_new_image():
         response_from_api = requests.get(URL)
     except exceptions.APIResponseError as error:
         logging.error(f'Ошибка при запросе к основному API: {error}')
-        response = requests.get(NEW_URL)
+        response_from_api = requests.get(NEW_URL)
     if response_from_api.status_code != HTTPStatus.OK:
         error_status = response_from_api.status_code
         logger.error(
@@ -75,8 +102,20 @@ def get_new_image():
         raise exceptions.APIResponseError(
             f'Error during the request to API server: {error_status}'
         )
-    response = response_from_api.json()
-    random_cat = response[0].get('url')
+    try:
+        response = response_from_api.json()
+    except json.JSONDecodeError as error:
+        logger.error(
+            f'Response has not inverted into json(): {error}.'
+        )
+        raise json.JSONDecodeError(
+            f'Response has not inverted into json(): {error}.'
+        )
+    try:
+        random_cat = response[0]['url']
+    except KeyError:
+        logger.error('URL of a picture was not received.')
+        raise KeyError('URL of a picture was not received.')
     return random_cat
 
 
@@ -120,10 +159,7 @@ def main():
     The main logic of the bot.
     """
     updater = Updater(token=TELEGRAM_TOKEN)
-    token_approved = check_token()
-    if not token_approved:
-        logger.critical('Mandatory token from .env is not available.')
-        raise ValueError('Mandatory token from .env is not available.')
+
     updater.dispatcher.add_handler(CommandHandler('start', wake_up))
     updater.dispatcher.add_handler(CommandHandler('newcat', new_cat))
     updater.dispatcher.add_handler(MessageHandler(Filters.text, say_hi))
